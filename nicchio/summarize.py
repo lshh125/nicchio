@@ -1,9 +1,18 @@
+import numpy
 import sklearn as skl
 import numpy as np
 
 
 def mean_aggregation(expression, spatial, k_neighbors=8):
-    pass
+    n, g = expression.shape
+    k = k_neighbors
+
+    knn_graph = skl.neighbors.kneighbors_graph(spatial, k, mode='distance')
+    knn_graph_inds = knn_graph.nonzero()[1].reshape([n, k])
+    weights = 1 / k
+    niche = weights * expression[knn_graph_inds.flatten(), :].reshape([n, k, g])
+    res = niche.sum(axis=1)
+    return res
 
 
 def _svdenv_core(expr, spatial, k, override_mean=None):
@@ -13,10 +22,17 @@ def _svdenv_core(expr, spatial, k, override_mean=None):
     weights = np.sqrt(1 / (k - 1))  # Simply sd with ddof=1 for now
 
     if override_mean is None:
-        expr -= expr.mean(axis=0, keepdims=True)
+        if isinstance(expr, numpy.ndarray) and not isinstance(expr, numpy.matrix):
+            expr -= expr.mean(axis=0, keepdims=True)
+        else:
+            temp = expr.mean(axis=0)
+            if temp.shape != (1, g):
+                raise RuntimeError(f"Matrix type {type(expr)} is not supported.")
+            expr -= temp
     else:
         expr = expr - override_mean
-    niche = weights * expr[knn_graph_inds.flatten(), :].reshape([n, k, g])
+    expr = np.array(expr)
+    niche = weights * np.array(expr[knn_graph_inds.flatten(), :]).reshape([n, k, g])
 
     svd_u, svd_s, svd_v = np.linalg.svd(niche)
     return svd_s, svd_v
